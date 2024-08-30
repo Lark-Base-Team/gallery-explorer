@@ -116,6 +116,7 @@ const visibleRecordIdList = ref<Array<any>>([])
 const currentFieldId = ref<string>("")
 const currentRecordId = ref<string>("")
 const currentViewId = ref<string>("")
+const currentRecordIndex = ref(-1);
 const isLoading = ref(false)
 const lastRecordId = ref("");
 const carouselIndex = reactive({
@@ -126,19 +127,22 @@ const previewTextFieldList = ref<Array<any>>([])
 const tableVal = ref<any>({})
 const pageToken = ref(0);
 const changePage = async (next: boolean) => {
-  const currentRecordIndex = visibleRecordIdList.value.findIndex(id => id === currentRecordId.value);
+  currentRecordIndex.value = visibleRecordIdList.value.findIndex(id => id === currentRecordId.value);
   const table = await bitable.base.getActiveTable();
   const view = await table.getActiveView()
   const viewId = view.id;
   let toRecordId;
   if (next) {
-    toRecordId = visibleRecordIdList.value[currentRecordIndex + 1];
+    toRecordId = visibleRecordIdList.value[currentRecordIndex.value + 1];
   } else {
-    toRecordId = visibleRecordIdList.value[currentRecordIndex - 1];
+    toRecordId = visibleRecordIdList.value[currentRecordIndex.value - 1];
   }
   await onSelectionChange({data: {viewId, recordId: toRecordId, refresh: true}})
 }
 const onSelectionChange = async (event: any) => {
+  // console.log(event.data.recordId)
+  // currentRecordIndex.value = visibleRecordIdList.value.findIndex(id => id === currentRecordId.value);
+  currentRecordIndex.value = visibleRecordIdList.value.findIndex(id => id === event.data.recordId);
   const table = await bitable.base.getActiveTable();
   isLoading.value = true;
   const hasPermission = await base.getPermission({
@@ -150,16 +154,25 @@ const onSelectionChange = async (event: any) => {
       const attachmentField = await table.getField<IAttachmentField>(currentFieldId.value);
       currentViewId.value = event?.data?.viewId ?? '';
       const view = await table.getViewById(currentViewId.value) as IGridView;
-      let queryOptions: any = {
-        pageSize: 200
+      // console.log(currentRecordIndex.value)
+      if (currentRecordIndex.value === -1) {
+        pageToken.value = 0
+      } else if (currentRecordIndex.value <= visibleRecordIdList.value.length) {
+        pageToken.value = currentRecordIndex.value
+      } else {
+        pageToken.value = 0;
+        ElMessage.warning("请重置行号")
       }
-      if (pageToken.value !== 0) {
-        queryOptions['pageToken'] = pageToken.value;
+      let queryOptions: any = {
+        pageSize: 200,
+        pageToken: pageToken.value
       }
       const recordIdListInfo = await view.getVisibleRecordIdListByPage(queryOptions)
-      console.log(recordIdListInfo)
-      pageToken.value = recordIdListInfo.pageToken;
-      visibleRecordIdList.value = recordIdListInfo.recordIds;
+      // console.log(recordIdListInfo)
+      // pageToken.value = recordIdListInfo.pageToken;
+      const arrSet = new Set([...visibleRecordIdList.value, ...recordIdListInfo.recordIds])
+      visibleRecordIdList.value = Array.from(arrSet);
+      // console.log(visibleRecordIdList.value)
       const recordId = event?.data?.recordId ?? '';
       currentRecordId.value = recordId;
       if (lastRecordId.value == recordId && !event?.data?.refresh) {
@@ -167,7 +180,6 @@ const onSelectionChange = async (event: any) => {
       } else if (recordId) {
         lastRecordId.value = recordId;
         currentCellPicUrlList.value = await attachmentField.getAttachmentUrls(recordId);
-        console.log(currentCellPicUrlList.value)
         let tableV: any = {}
         for (let k of previewTextFieldList.value) {
           await Object.defineProperty(tableV, k, {
